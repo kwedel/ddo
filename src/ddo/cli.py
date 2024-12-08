@@ -4,7 +4,7 @@ from .autocomplete import WordAutocomplete
 
 
 @click.command()
-@click.argument("word", type=str)
+@click.argument("word", type=str, shell_complete=WordAutocomplete.get_completions)
 def cli(word):
     """
     Lookup a word in the Danish dictionary
