@@ -1,10 +1,10 @@
 import click
 from .dictionary import lookup, display
-from .autocomplete import WordAutocomplete
+from .autocomplete import get_completions
 
 
 @click.command()
-@click.argument("word", type=str, shell_complete=WordAutocomplete.get_completions)
+@click.argument("word", type=str, shell_complete=get_completions)
 def cli(word):
     """
     Lookup a word in the Danish dictionary

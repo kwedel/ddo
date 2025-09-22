@@ -26,6 +26,7 @@ class WordEntry(NamedTuple):
 
     word: str
     part_of_speech: str
+    phon: str
     inflections: str
     etymology: Optional[str]
     definitions: List[WordDefinition]
@@ -60,6 +61,10 @@ def lookup(word: str) -> WordEntry:
     # Extract part of speech
     pos_tag = soup.find("span", class_="pos")
     part_of_speech = pos_tag.text if pos_tag else "N/A"
+
+    # Extract
+    phon_tag = soup.find("span", class_="phon")
+    phon_tag = phon_tag.text if phon_tag else "N/A"
 
     # Extract inflections
     inflections_tag = soup.find("span", class_="m")
@@ -98,6 +103,7 @@ def lookup(word: str) -> WordEntry:
     return WordEntry(
         word=word_text,
         part_of_speech=part_of_speech,
+        phon=phon_tag,
         inflections=inflections,
         etymology=etymology,
         definitions=definitions,
@@ -127,6 +133,10 @@ def display(word_data: WordEntry):
     # Inflections
     if word_data.inflections:
         console.print(f"[bold]Inflections:[/] {word_data.inflections}")
+
+    # Udtale
+    if word_data.phon:
+        console.print("[bold]Udtale:[/] " + rich.markup.escape(f"{word_data.phon}"))
 
     # Etymology
     if word_data.etymology:
