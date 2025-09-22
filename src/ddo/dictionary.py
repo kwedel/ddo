@@ -43,11 +43,7 @@ def lookup(word: str) -> List[WordEntry]:
     :param word: Word to lookup
     :return: List of WordEntry with word details (handles multiple matches)
     """
-    params = {
-        "q": word,
-        "app": "ios",
-        "version": "2.1.2",
-    }  # Added app/version to mimic mobile
+    params = {"q": word}
 
     try:
         response = requests.get(BASE_URL, params=params)
@@ -68,7 +64,7 @@ def lookup(word: str) -> List[WordEntry]:
         part_of_speech = pos_tag.get_text(strip=True) if pos_tag else "N/A"
 
         phon_tag = ar.find("span", class_="phon")
-        phon = phon_tag.get_text(strip=True) if phon_tag else None
+        phon = phon_tag.get_text(separator=" ", strip=True) if phon_tag else None
 
         inflections_tag = ar.find("span", class_="m")
         inflections = inflections_tag.get_text(strip=True) if inflections_tag else ""
@@ -80,7 +76,11 @@ def lookup(word: str) -> List[WordEntry]:
 
         if def_container:
             etym_tag = def_container.find("span", class_="etym")
-            etymology = etym_tag.get_text(strip=True) if etym_tag else None
+            if etym_tag:
+                etym_text = etym_tag.get_text()
+                etymology = " ".join(
+                    etym_text.split()
+                )  # Normalize spacing by collapsing multiple spaces
 
             # Parse inner definitions (direct children of def_container)
             for def_inner in def_container.find_all(
@@ -91,7 +91,7 @@ def lookup(word: str) -> List[WordEntry]:
 
                 if dtrn_tag:
                     level = level_tag.get_text(strip=True) if level_tag else ""
-                    text = dtrn_tag.get_text(strip=True)
+                    text = dtrn_tag.get_text(separator=" ", strip=True)
                     # Note: <span class="co"> (commentary) is already included in text
 
                     example_tag = def_inner.find("span", class_="ex")
@@ -105,7 +105,9 @@ def lookup(word: str) -> List[WordEntry]:
                         for syn_k in onyms.find_all("span", class_="k"):
                             syn_text = syn_k.get_text(strip=True)
                             if syn_text and syn_text.lower() != word_text.lower():
-                                synonyms.append(syn_text)
+                                synonyms.append(
+                                    " ".join(syn_text.split())
+                                )  # Normalize any spacing in synonyms
 
                     definition = WordDefinition(
                         level=level, text=text, style=None, example=example
@@ -159,12 +161,14 @@ def display(entries: List[WordEntry]) -> None:
             console.print(f"[bold]Inflections:[/] {entry.inflections}")
 
         # Udtale (pronunciation)
-        if entry.phon:
+        if entry.phon is not None:
             console.print("[bold]Udtale:[/] " + rich.markup.escape(entry.phon))
+        else:
+            console.print("[bold]Udtale:[/] N/A")
 
         # Etymology
         if entry.etymology:
-            console.print(f"[bold]Etymology:[/] {entry.etymology}")
+            console.print("[bold]Etymology:[/] " + rich.markup.escape(entry.etymology))
 
         # Definitions
         if entry.definitions:
@@ -177,7 +181,7 @@ def display(entries: List[WordEntry]) -> None:
                     definition_text.append(f"{definition.level} ", style="green")
 
                 # Add definition text
-                definition_text.append(definition.text)
+                definition_text.append(rich.markup.escape(definition.text))
 
                 # Style is not used (commentary is embedded in text)
 
@@ -185,7 +189,9 @@ def display(entries: List[WordEntry]) -> None:
 
                 # Add example if exists
                 if definition.example:
-                    console.print(f"  [dim italic]Example: {definition.example}[/]")
+                    console.print(
+                        f"  [dim italic]Example: {rich.markup.escape(definition.example)}[/]"
+                    )
         else:
             console.print("[italic]No definitions found.[/]")
 
