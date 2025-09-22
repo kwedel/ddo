@@ -5,7 +5,6 @@ import sys
 import rich
 from rich.console import Console
 from rich.panel import Panel
-from rich.text import Text
 
 
 class WordDefinition(NamedTuple):
@@ -15,8 +14,9 @@ class WordDefinition(NamedTuple):
 
     level: str
     text: str
-    style: Optional[str] = None  # Retained but unused in current parsing
+    style: Optional[str] = None
     example: Optional[str] = None
+    indent: int = 0
 
 
 class WordEntry(NamedTuple):
@@ -27,13 +27,67 @@ class WordEntry(NamedTuple):
     word: str
     part_of_speech: str
     inflections: str
-    etymology: Optional[str]
-    definitions: List[WordDefinition]
-    synonyms: List[str]
+    etymology: Optional[str] = None
     phon: Optional[str] = None
+    definitions: List[WordDefinition] = []
+    synonyms: List[str] = []
 
 
 BASE_URL = "https://ws.dsl.dk/ddo/query"
+
+
+def parse_definitions(container, synonyms: List[str], indent: int, word_text: str) -> List[WordDefinition]:
+    """
+    Recursively parse definition spans, handling subdefinitions and collecting synonyms/related terms.
+    """
+    definitions = []
+    for def_span in container.find_all("span", class_="def", recursive=False):
+        level_tag = def_span.find("span", class_="l")
+        level = level_tag.get_text(strip=True) if level_tag else ""
+
+        dtrn_tag = def_span.find("span", class_="dtrn")
+        style = None
+        text = ""
+        if dtrn_tag:
+            full_text = dtrn_tag.get_text(separator=" ", strip=True)
+            style_tag = dtrn_tag.find("span", class_="style")
+            if style_tag:
+                style = style_tag.get_text(strip=True)
+                # Remove style from the beginning of the text if present
+                if full_text.startswith(style):
+                    full_text = full_text[len(style):].strip()
+                else:
+                    full_text = full_text.replace(style, "", 1).strip()
+                text = ' '.join(full_text.split())
+            else:
+                text = full_text
+
+        example_tag = def_span.find("span", class_="ex")
+        example = example_tag.get_text(strip=True) if example_tag else None
+
+        # Collect synonyms/related from onyms within this definition
+        onyms_tags = def_span.find_all("span", class_=lambda x: x and "onyms" in " ".join(x or []))
+        for onyms in onyms_tags:
+            for syn_k in onyms.find_all("span", class_="k"):
+                syn_full = syn_k.get_text(separator=" ", strip=True)
+                syn_text = ' '.join(syn_full.split())
+                if syn_text and syn_text.lower() != word_text.lower():
+                    synonyms.append(syn_text)
+
+        definition = WordDefinition(
+            level=level,
+            text=text,
+            style=style,
+            example=example,
+            indent=indent,
+        )
+        definitions.append(definition)
+
+        # Recurse for subdefinitions
+        sub_definitions = parse_definitions(def_span, synonyms, indent + 1, word_text)
+        definitions.extend(sub_definitions)
+
+    return definitions
 
 
 def lookup(word: str) -> List[WordEntry]:
@@ -77,42 +131,10 @@ def lookup(word: str) -> List[WordEntry]:
         if def_container:
             etym_tag = def_container.find("span", class_="etym")
             if etym_tag:
-                etym_text = etym_tag.get_text()
-                etymology = " ".join(
-                    etym_text.split()
-                )  # Normalize spacing by collapsing multiple spaces
+                etym_full = etym_tag.get_text(separator=" ", strip=True)
+                etymology = ' '.join(etym_full.split())  # Normalize spacing
 
-            # Parse inner definitions (direct children of def_container)
-            for def_inner in def_container.find_all(
-                "span", class_="def", recursive=False
-            ):
-                level_tag = def_inner.find("span", class_="l")
-                dtrn_tag = def_inner.find("span", class_="dtrn")
-
-                if dtrn_tag:
-                    level = level_tag.get_text(strip=True) if level_tag else ""
-                    text = dtrn_tag.get_text(separator=" ", strip=True)
-                    # Note: <span class="co"> (commentary) is already included in text
-
-                    example_tag = def_inner.find("span", class_="ex")
-                    example = example_tag.get_text(strip=True) if example_tag else None
-
-                    # Collect synonyms/related from onyms within this definition
-                    onyms_tags = def_inner.find_all(
-                        "span", class_=lambda x: x and "onyms" in " ".join(x)
-                    )
-                    for onyms in onyms_tags:
-                        for syn_k in onyms.find_all("span", class_="k"):
-                            syn_text = syn_k.get_text(strip=True)
-                            if syn_text and syn_text.lower() != word_text.lower():
-                                synonyms.append(
-                                    " ".join(syn_text.split())
-                                )  # Normalize any spacing in synonyms
-
-                    definition = WordDefinition(
-                        level=level, text=text, style=None, example=example
-                    )
-                    definitions.append(definition)
+            definitions = parse_definitions(def_container, synonyms, 0, word_text)
 
         # Deduplicate synonyms
         synonyms = list(set(synonyms))
@@ -120,9 +142,9 @@ def lookup(word: str) -> List[WordEntry]:
         entry = WordEntry(
             word=word_text,
             part_of_speech=part_of_speech,
-            phon=phon,
             inflections=inflections,
             etymology=etymology,
+            phon=phon,
             definitions=definitions,
             synonyms=synonyms,
         )
@@ -148,9 +170,7 @@ def display(entries: List[WordEntry]) -> None:
         # Word header
         console.print(
             Panel(
-                Text.assemble(
-                    (entry.word, "bold cyan"), " ", (entry.part_of_speech, "italic")
-                ),
+                f"[bold cyan]{entry.word}[/] [italic]{entry.part_of_speech}[/italic]",
                 title="Dictionary Entry",
                 border_style="blue",
             )
@@ -162,41 +182,36 @@ def display(entries: List[WordEntry]) -> None:
 
         # Udtale (pronunciation)
         if entry.phon is not None:
-            console.print("[bold]Udtale:[/] " + rich.markup.escape(entry.phon))
+            console.print(f"[bold]Udtale:[/] {rich.markup.escape(entry.phon)}")
         else:
             console.print("[bold]Udtale:[/] N/A")
 
         # Etymology
         if entry.etymology:
-            console.print("[bold]Etymology:[/] " + rich.markup.escape(entry.etymology))
+            console.print(f"[bold]Etymology:[/] {rich.markup.escape(entry.etymology)}")
 
         # Definitions
         if entry.definitions:
             console.print("\n[bold underline]Definitions:[/]")
             for definition in entry.definitions:
-                definition_text = Text()
-
-                # Add level if exists
-                if definition.level:
-                    definition_text.append(f"{definition.level} ", style="green")
-
-                # Add definition text
-                definition_text.append(rich.markup.escape(definition.text))
-
-                # Style is not used (commentary is embedded in text)
-
-                console.print(definition_text)
+                level_part = f"[green]{definition.level}[/green] " if definition.level else ""
+                text_part = rich.markup.escape(definition.text)
+                style_part = f" [italic][{definition.style}][/italic]" if definition.style else ""
+                full_def = f"{level_part}{text_part}{style_part}".strip()
+                indent_str = "  " * definition.indent
+                console.print(f"{indent_str}{full_def}")
 
                 # Add example if exists
                 if definition.example:
+                    ex_indent = "  " * (definition.indent + 1)
                     console.print(
-                        f"  [dim italic]Example: {rich.markup.escape(definition.example)}[/]"
+                        f"{ex_indent}[dim italic]Example: {rich.markup.escape(definition.example)}[/dim italic]"
                     )
         else:
             console.print("[italic]No definitions found.[/]")
 
         # Synonyms
         if entry.synonyms:
-            console.print("\n[bold]Synonyms & Related:[/] " + ", ".join(entry.synonyms))
+            console.print(f"\n[bold]Synonyms & Related:[/] {', '.join(entry.synonyms)}")
 
         console.print("\n")  # Space between entries
