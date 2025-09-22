@@ -166,52 +166,58 @@ def display(entries: List[WordEntry]) -> None:
 
     console = Console()
 
-    for entry in entries:
-        # Word header
-        console.print(
-            Panel(
-                f"[bold cyan]{entry.word}[/] [italic]{entry.part_of_speech}[/italic]",
-                title="Dictionary Entry",
-                border_style="blue",
-            )
+    # Display the primary (first) entry in full
+    primary = entries[0]
+    # Word header
+    console.print(
+        Panel(
+            f"[bold cyan]{primary.word}[/] [italic]{primary.part_of_speech}[/italic]",
+            title="Dictionary Entry",
+            border_style="blue",
         )
+    )
 
-        # Inflections
-        if entry.inflections:
-            console.print(f"[bold]Inflections:[/] {entry.inflections}")
+    # Inflections
+    if primary.inflections:
+        console.print(f"[bold]Inflections:[/] {primary.inflections}")
 
-        # Udtale (pronunciation)
-        if entry.phon is not None:
-            console.print(f"[bold]Udtale:[/] {rich.markup.escape(entry.phon)}")
-        else:
-            console.print("[bold]Udtale:[/] N/A")
+    # Udtale (pronunciation)
+    if primary.phon is not None:
+        console.print(f"[bold]Udtale:[/] {rich.markup.escape(primary.phon)}")
+    else:
+        console.print("[bold]Udtale:[/] N/A")
 
-        # Etymology
-        if entry.etymology:
-            console.print(f"[bold]Etymology:[/] {rich.markup.escape(entry.etymology)}")
+    # Etymology
+    if primary.etymology:
+        console.print(f"[bold]Etymology:[/] {rich.markup.escape(primary.etymology)}")
 
-        # Definitions
-        if entry.definitions:
-            console.print("\n[bold underline]Definitions:[/]")
-            for definition in entry.definitions:
-                level_part = f"[green]{definition.level}[/green] " if definition.level else ""
-                text_part = rich.markup.escape(definition.text)
-                style_part = f" [italic][{definition.style}][/italic]" if definition.style else ""
-                full_def = f"{level_part}{text_part}{style_part}".strip()
-                indent_str = "  " * definition.indent
-                console.print(f"{indent_str}{full_def}")
+    # Definitions
+    if primary.definitions:
+        console.print("\n[bold underline]Definitions:[/]")
+        for definition in primary.definitions:
+            level_part = f"[green]{definition.level}[/green] " if definition.level else ""
+            text_part = rich.markup.escape(definition.text)
+            style_part = f" [italic][{definition.style}][/italic]" if definition.style else ""
+            full_def = f"{level_part}{text_part}{style_part}".strip()
+            indent_str = "  " * definition.indent
+            console.print(f"{indent_str}{full_def}")
 
-                # Add example if exists
-                if definition.example:
-                    ex_indent = "  " * (definition.indent + 1)
-                    console.print(
-                        f"{ex_indent}[dim italic]Example: {rich.markup.escape(definition.example)}[/dim italic]"
-                    )
-        else:
-            console.print("[italic]No definitions found.[/]")
+            # Add example if exists
+            if definition.example:
+                ex_indent = "  " * (definition.indent + 1)
+                console.print(
+                    f"{ex_indent}[dim italic]Example: {rich.markup.escape(definition.example)}[/dim italic]"
+                )
+    else:
+        console.print("[italic]No definitions found.[/]")
 
-        # Synonyms
-        if entry.synonyms:
-            console.print(f"\n[bold]Synonyms & Related:[/] {', '.join(entry.synonyms)}")
+    # Synonyms
+    if primary.synonyms:
+        console.print(f"\n[bold]Synonyms & Related:[/] {', '.join(primary.synonyms)}")
 
-        console.print("\n")  # Space between entries
+    # Other matches if any
+    if len(entries) > 1:
+        other_words = [entry.word for entry in entries[1:]]
+        console.print(f"\n[bold]Other matches:[/] {', '.join(other_words)}")
+
+    console.print("\n")  # Space at the end
