@@ -15,7 +15,7 @@ class WordDefinition(NamedTuple):
 
     level: str
     text: str
-    style: Optional[str] = None
+    style: Optional[str] = None  # Retained but unused in current parsing
     example: Optional[str] = None
 
 
@@ -26,24 +26,28 @@ class WordEntry(NamedTuple):
 
     word: str
     part_of_speech: str
-    phon: str
     inflections: str
     etymology: Optional[str]
     definitions: List[WordDefinition]
     synonyms: List[str]
+    phon: Optional[str] = None
 
 
 BASE_URL = "https://ws.dsl.dk/ddo/query"
 
 
-def lookup(word: str) -> WordEntry:
+def lookup(word: str) -> List[WordEntry]:
     """
     Lookup a word in the Danish dictionary
 
     :param word: Word to lookup
-    :return: WordEntry with word details
+    :return: List of WordEntry with word details (handles multiple matches)
     """
-    params = {"q": word}  # , "app": "ios", "version": "2.1.2"}
+    params = {
+        "q": word,
+        "app": "ios",
+        "version": "2.1.2",
+    }  # Added app/version to mimic mobile
 
     try:
         response = requests.get(BASE_URL, params=params)
@@ -54,116 +58,139 @@ def lookup(word: str) -> WordEntry:
 
     soup = BeautifulSoup(response.text, "html.parser")
 
-    # Extract word
-    word_text = soup.find("span", class_="k")
-    word_text = word_text.text if word_text else word
+    entries = []
+    for ar in soup.find_all("span", class_="ar"):
+        head = ar.find("span", class_="head")
+        k_span = head.find("span", class_="k") if head else None
+        word_text = k_span.get_text(strip=True) if k_span else word
 
-    # Extract part of speech
-    pos_tag = soup.find("span", class_="pos")
-    part_of_speech = pos_tag.text if pos_tag else "N/A"
+        pos_tag = ar.find("span", class_="pos")
+        part_of_speech = pos_tag.get_text(strip=True) if pos_tag else "N/A"
 
-    # Extract
-    phon_tag = soup.find("span", class_="phon")
-    phon_tag = phon_tag.text if phon_tag else "N/A"
+        phon_tag = ar.find("span", class_="phon")
+        phon = phon_tag.get_text(strip=True) if phon_tag else None
 
-    # Extract inflections
-    inflections_tag = soup.find("span", class_="m")
-    inflections = inflections_tag.text if inflections_tag else ""
+        inflections_tag = ar.find("span", class_="m")
+        inflections = inflections_tag.get_text(strip=True) if inflections_tag else ""
 
-    # Extract etymology
-    etymology_tag = soup.find("span", class_="etym")
-    etymology = etymology_tag.text if etymology_tag else None
+        def_container = ar.find("span", class_="def")
+        etymology = None
+        definitions = []
+        synonyms = []
 
-    # Extract definitions
-    definitions = []
-    for def_tag in soup.find_all("span", class_="def"):
-        level_tag = def_tag.find("span", class_="l")
-        dtrn_tag = def_tag.find("span", class_="dtrn")
+        if def_container:
+            etym_tag = def_container.find("span", class_="etym")
+            etymology = etym_tag.get_text(strip=True) if etym_tag else None
 
-        if level_tag and dtrn_tag:
-            # Extract style if exists
-            style_tag = def_tag.find("span", class_="style")
-            style = style_tag.text if style_tag else None
+            # Parse inner definitions (direct children of def_container)
+            for def_inner in def_container.find_all(
+                "span", class_="def", recursive=False
+            ):
+                level_tag = def_inner.find("span", class_="l")
+                dtrn_tag = def_inner.find("span", class_="dtrn")
 
-            # Extract example if exists
-            example_tag = def_tag.find("span", class_="ex")
-            example = example_tag.text if example_tag else None
+                if dtrn_tag:
+                    level = level_tag.get_text(strip=True) if level_tag else ""
+                    text = dtrn_tag.get_text(strip=True)
+                    # Note: <span class="co"> (commentary) is already included in text
 
-            definition = WordDefinition(
-                level=level_tag.text, text=dtrn_tag.text, style=style, example=example
-            )
-            definitions.append(definition)
+                    example_tag = def_inner.find("span", class_="ex")
+                    example = example_tag.get_text(strip=True) if example_tag else None
 
-    # Extract synonyms
-    synonyms = []
-    synonyms_tag = soup.find("span", class_="onyms synonyms")
-    if synonyms_tag:
-        synonyms = [syn.text for syn in synonyms_tag.find_all("span", class_="k")]
+                    # Collect synonyms/related from onyms within this definition
+                    onyms_tags = def_inner.find_all(
+                        "span", class_=lambda x: x and "onyms" in " ".join(x)
+                    )
+                    for onyms in onyms_tags:
+                        for syn_k in onyms.find_all("span", class_="k"):
+                            syn_text = syn_k.get_text(strip=True)
+                            if syn_text and syn_text.lower() != word_text.lower():
+                                synonyms.append(syn_text)
 
-    return WordEntry(
-        word=word_text,
-        part_of_speech=part_of_speech,
-        phon=phon_tag,
-        inflections=inflections,
-        etymology=etymology,
-        definitions=definitions,
-        synonyms=synonyms,
-    )
+                    definition = WordDefinition(
+                        level=level, text=text, style=None, example=example
+                    )
+                    definitions.append(definition)
+
+        # Deduplicate synonyms
+        synonyms = list(set(synonyms))
+
+        entry = WordEntry(
+            word=word_text,
+            part_of_speech=part_of_speech,
+            phon=phon,
+            inflections=inflections,
+            etymology=etymology,
+            definitions=definitions,
+            synonyms=synonyms,
+        )
+        entries.append(entry)
+
+    return entries
 
 
-def display(word_data: WordEntry):
+def display(entries: List[WordEntry]) -> None:
     """
     Display word data in a rich, formatted manner
 
-    :param word_data: WordEntry to display
+    :param entries: List of WordEntry to display
     """
+    if not entries:
+        console = Console()
+        console.print("[red]No results found.[/]")
+        return
+
     console = Console()
 
-    # Word header
-    console.print(
-        Panel(
-            Text.assemble(
-                (word_data.word, "bold cyan"), " ", (word_data.part_of_speech, "italic")
-            ),
-            title="Dictionary Entry",
-            border_style="blue",
+    for entry in entries:
+        # Word header
+        console.print(
+            Panel(
+                Text.assemble(
+                    (entry.word, "bold cyan"), " ", (entry.part_of_speech, "italic")
+                ),
+                title="Dictionary Entry",
+                border_style="blue",
+            )
         )
-    )
 
-    # Inflections
-    if word_data.inflections:
-        console.print(f"[bold]Inflections:[/] {word_data.inflections}")
+        # Inflections
+        if entry.inflections:
+            console.print(f"[bold]Inflections:[/] {entry.inflections}")
 
-    # Udtale
-    if word_data.phon:
-        console.print("[bold]Udtale:[/] " + rich.markup.escape(f"{word_data.phon}"))
+        # Udtale (pronunciation)
+        if entry.phon:
+            console.print("[bold]Udtale:[/] " + rich.markup.escape(entry.phon))
 
-    # Etymology
-    if word_data.etymology:
-        console.print(f"[bold]Etymology:[/] {word_data.etymology}")
+        # Etymology
+        if entry.etymology:
+            console.print(f"[bold]Etymology:[/] {entry.etymology}")
 
-    # Definitions
-    console.print("\n[bold underline]Definitions:[/]")
-    for definition in word_data.definitions:
-        definition_text = Text()
+        # Definitions
+        if entry.definitions:
+            console.print("\n[bold underline]Definitions:[/]")
+            for definition in entry.definitions:
+                definition_text = Text()
 
-        # Add level if exists
-        if definition.level:
-            definition_text.append(f"{definition.level} ", style="green")
+                # Add level if exists
+                if definition.level:
+                    definition_text.append(f"{definition.level} ", style="green")
 
-        # Add definition text
-        definition_text.append(definition.text)
+                # Add definition text
+                definition_text.append(definition.text)
 
-        # Add style if exists
-        if definition.style:
-            definition_text.append(f" [{definition.style}]", style="italic dim")
+                # Style is not used (commentary is embedded in text)
 
-        console.print(definition_text)
+                console.print(definition_text)
 
-        # Add example if exists
-        if definition.example:
-            console.print(f"  [dim italic]Example: {definition.example}[/]")
+                # Add example if exists
+                if definition.example:
+                    console.print(f"  [dim italic]Example: {definition.example}[/]")
+        else:
+            console.print("[italic]No definitions found.[/]")
 
-    # Synonyms
-    if word_data.synonyms:
-        console.print("\n[bold]Synonyms:[/] " + ", ".join(word_data.synonyms))
+        # Synonyms
+        if entry.synonyms:
+            console.print("\n[bold]Synonyms & Related:[/] " + ", ".join(entry.synonyms))
+
+        console.print("\n")  # Space between entries
