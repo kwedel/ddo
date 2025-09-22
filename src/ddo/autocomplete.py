@@ -1,6 +1,5 @@
 import requests
 
-
 LIVESEARCH_URL = "https://ws.dsl.dk/ddo/livesearch"
 
 

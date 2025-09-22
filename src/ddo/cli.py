@@ -1,6 +1,7 @@
 import click
-from .dictionary import lookup, display
+
 from .autocomplete import get_completions
+from .dictionary import display, lookup
 
 
 @click.command()

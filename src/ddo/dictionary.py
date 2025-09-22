@@ -1,8 +1,9 @@
-import requests
-from bs4 import BeautifulSoup
-from typing import List, NamedTuple, Optional
 import sys
+from typing import List, NamedTuple, Optional
+
+import requests
 import rich
+from bs4 import BeautifulSoup
 from rich.console import Console
 from rich.panel import Panel
 
