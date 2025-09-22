@@ -1,5 +1,4 @@
 import requests
-from typing import List
 
 
 LIVESEARCH_URL = "https://ws.dsl.dk/ddo/livesearch"
