@@ -3,6 +3,7 @@ name = "ddo"
 version = "1.0.0"
 description = "Search Den Danske Ordbog (ordnet.dk) from the terminal!"
 readme = "README.md"
+authors = [{name = "Kåre Obel Wedel", email = "kaarewj@gmail.com"}]
 requires-python = ">=3.12"
 dependencies = [
     "beautifulsoup4>=4.12.3",
@@ -10,6 +11,9 @@ dependencies = [
     "requests>=2.32.3",
     "rich>=13.9.4",
 ]
+
+[project.urls]
+Repository = "https://github.com/kwedel/ddo.git"
 
 [project.scripts]
 ddo = "ddo:cli.cli"
