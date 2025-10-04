@@ -1,6 +1,6 @@
 [project]
 name = "ddo"
-version = "1.0.0"
+version = "1.0.1"
 description = "Search Den Danske Ordbog (ordnet.dk) from the terminal!"
 readme = "README.md"
 authors = [{name = "Kåre Obel Wedel", email = "kaarewj@gmail.com"}]
