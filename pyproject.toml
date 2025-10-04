@@ -1,7 +1,7 @@
 [project]
 name = "ddo"
-version = "0.1.0"
-description = "Add your description here"
+version = "1.0.0"
+description = "Search Den Danske Ordbog (ordnet.dk) from the terminal!"
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
