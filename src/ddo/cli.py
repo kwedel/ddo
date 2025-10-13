@@ -10,7 +10,7 @@ def cli(word):
     """
     Lookup a word in the Danish dictionary
 
-    Example: ord pære
+    Example: ddo pære
     """
     word_data = lookup(word)
     display(word_data)
